@@ -1,0 +1,4 @@
+enum ID
+{
+  PLAYER, SEGMENT, GOV, COM;
+}

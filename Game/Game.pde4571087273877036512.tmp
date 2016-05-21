@@ -1,0 +1,273 @@
+import ddf.minim.*;
+import ddf.minim.analysis.*;
+import ddf.minim.effects.*;
+import ddf.minim.signals.*;
+import ddf.minim.spi.*;
+import ddf.minim.ugens.*;
+import java.util.*;
+import java.awt.Rectangle;
+
+enum State 
+{
+  INIT, PLAY, END;
+}
+
+//game model variables
+Rectangle buttonPosition;
+int buttonWidth = 128;
+int buttonHeight = 32;
+int score = 0;
+int pickupPoints = 25;
+boolean[] keyDown = new boolean[5];
+boolean rectOver = false;
+State gameState = State.INIT;
+
+//game objects
+ArrayList<GameObject> gameObjects = new ArrayList<GameObject>();
+Player player;
+Spawner spawner;
+
+//game sounds and fonts
+Minim minim;
+AudioSample pickupSound;
+AudioPlayer music;
+PFont f;
+
+void setup()
+{
+  //set screen size
+  size(800, 600);
+
+  //get center position for play button
+  buttonPosition = centerObjectRect(0, 0, buttonWidth, buttonHeight, width, height);
+
+  //create player and spawning system
+  player = new Player(new PVector(0, 0), 4, 32, 32, #ffffff, ID.PLAYER);
+  spawner = new Spawner();
+
+  reset();
+
+  //create sound manager and add sound files
+  minim = new Minim(this);
+  pickupSound = minim.loadSample("sounds/pickup.wav");
+  music = minim.loadFile("sounds/music.mp3", 2048);
+  music.loop();
+  music.play();
+
+  //create font
+  f = createFont("Arial", 16, true);
+}
+
+void draw()
+{
+  //draw background
+  background(0);
+
+  //check if mouse is within button bounds
+  if (overRect((int)buttonPosition.x, (int)buttonPosition.y, buttonPosition.width, buttonPosition.height)) {
+    rectOver = true;
+  }
+
+  //check if the game has started
+  if (gameState == State.INIT) {
+    //draw play button
+    drawButton("Play!", 32, -8, 0, 0);
+  }
+
+  //check if the game is running
+  if (gameState == State.PLAY)
+  {
+    //update and draw objects
+    spawner.update();
+    player.update();
+    player.draw();
+    //Use an iterator to make sure the selected object is available in the array
+    Iterator<GameObject> i = gameObjects.iterator();
+    while (i.hasNext()) 
+    {
+      GameObject obj = i.next();
+      obj.update();
+      obj.update(player.position);
+      obj.draw();
+      //Detecte collision between player and objects
+      if (Collision.calcAABB(player, obj))
+      {
+        //Detect if the player collides with a comrade
+        if (obj.getId() == ID.COM) 
+        {
+          pickupSound.trigger();
+          updateScore(pickupPoints);
+          player.segments.add(new Segment(new PVector(player.segments.get(player.segments.size() - 1).position.x, player.segments.get(player.segments.size() - 1).position.y), 32, 32, #ffffff, ID.SEGMENT));
+          i.remove();
+        }
+        if (obj.getId() == ID.GOV)
+        {
+          //gameState = State.END;
+        }
+      }
+    }
+    
+    for(Segment seg : player.segments)
+    {
+     if(Collision.calcAABB(seg, player))
+     {
+       
+     }
+    }
+  }
+
+  //check if the game has ended
+  if (gameState == State.END)
+  {
+    drawButton("Game Over! Try again?", 116, -8, 48, 0);
+  }
+
+  //draw score
+  textFont(f, 16);
+  fill(#FFFFFF);
+  text("Score: " + score, 16, 16);
+}
+
+//detect key press
+void keyPressed() 
+{
+  //handle each key typed
+  handleKey(keyCode);
+}
+
+//detect mouse press
+void mousePressed()
+{
+  //start the game when the play button detects the click within its bounds
+  if (rectOver) {
+    if (gameState == State.INIT)
+    {
+      gameState = State.PLAY;
+    }
+    if (gameState == State.END) 
+    {
+      reset();
+      gameState = State.PLAY;
+    }
+  }
+}
+
+//set all other keys to false when another key is pressed to set constant direction of player
+void handleKey(int code) 
+{
+  switch(code) 
+  {
+  case 39: //right
+    keyDown[0] = true;
+    keyDown[1] = false;
+    keyDown[2] = false;
+    keyDown[3] = false;
+    break;
+  case 37: //left
+    keyDown[1] = true;
+    keyDown[0] = false;
+    keyDown[2] = false;
+    keyDown[3] = false;
+    break;
+  case 40: //down
+    keyDown[2] = true;
+    keyDown[1] = false;
+    keyDown[0] = false;
+    keyDown[3] = false;
+    break;
+  case 38: //up
+    keyDown[3] = true;
+    keyDown[1] = false;
+    keyDown[2] = false;
+    keyDown[0] = false;
+    break;
+  case 32:  //spacebar
+    keyDown[4] = true;
+    break;
+  }
+}
+
+//add game object
+void addObject(GameObject obj)
+{
+  gameObjects.add(obj);
+}
+
+//remove game object by id
+void removeObject(ID id) {
+  for (GameObject obj : gameObjects)
+  {
+    if (obj.getId() == id) {
+      gameObjects.remove(obj);
+    }
+  }
+}
+
+//get game object by id
+GameObject getObject(ID id) {
+  for (GameObject obj : gameObjects)
+  {
+    if (obj.getId() == id) return obj;
+  }
+  return null;
+}
+
+/*
+  increment the game score by positive or negative values
+ example: updateScore(5) or updateScore(-5)
+ */
+void updateScore(int value) 
+{
+  score += value;
+}
+
+//reset game
+void reset()
+{
+  gameObjects.clear();
+  player.reset();
+  player.position = centerObjectVector(0, 0, 32, 32, width, height);
+  keyDown[0] = true;
+  keyDown[1] = false;
+  keyDown[2] = false;
+  keyDown[3] = false;
+  keyDown[4] = false;
+  score = 0;
+}
+
+//draw button
+void drawButton(String text, int w, int h, int ow, int oh) 
+{
+  fill(#FFFFFF);
+  noStroke();
+  rect(buttonPosition.x, buttonPosition.y, buttonPosition.width + ow, buttonPosition.height + oh);
+  textFont(f, 16);
+  fill(0);
+  Rectangle textPosition = centerObjectRect((int)buttonPosition.x, (int)buttonPosition.y, w, h, buttonPosition.width, buttonPosition.height);
+  text(text, textPosition.x, textPosition.y);
+}
+
+
+//detect if mouse is within certain rectangular boundaries
+boolean overRect(int x, int y, int width, int height)
+{
+  if (mouseX >= x && mouseX <= x+width && 
+    mouseY >= y && mouseY <= y+height) {
+    return true;
+  } else {
+    return false;
+  }
+}
+
+
+//center object on another object and return Rectangle object
+Rectangle centerObjectRect(int ox, int oy, int ow, int oh, int w, int h)
+{
+  return new Rectangle(ox + (w / 2) - (ow / 2), oy + (h / 2) - (oh / 2), ow, oh);
+}
+
+//center object on another object and return PVector object
+PVector centerObjectVector(int ox, int oy, int ow, int oh, int w, int h) 
+{
+  return new PVector(ox + (w / 2) - (ow / 2), oy + (h / 2) - (oh / 2));
+} 
